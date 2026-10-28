@@ -31,7 +31,7 @@
           <button type="button" class="btn primary" id="open-btn-2">Choose a file</button>
           <button type="button" class="btn" id="sample-btn">Load sample scan</button>
         </div>
-        <p class="fine">The file is read by your browser and never leaves this device.</p>
+        <p class="fine">The file is read by your browser. Nothing is uploaded unless you choose Share with Claude.</p>
       </div>
     </section>
 
@@ -63,6 +63,27 @@
         </label>
         <p class="hint" id="units-hint">PLY files don't record units.</p>
         <dl class="facts" id="facts"><div><dt>Points</dt><dd>—</dd></div></dl>
+      </section>
+
+      <section aria-labelledby="claude-title">
+        <h2 id="claude-title">Claude</h2>
+        <div id="share-idle">
+          <p class="hint">Let Claude crop, clean up, measure and move around this scan. Sharing uploads it to a temporary session on this site. It is deleted after 2 hours without activity, after 24 hours at most, or when you end the session.</p>
+          <button type="button" class="btn" id="share-btn" disabled>Share with Claude</button>
+          <p class="hint" id="share-idle-note"></p>
+        </div>
+        <div id="share-busy" hidden>
+          <p class="hint" id="share-progress"></p>
+          <div class="track"><div class="fill" id="share-fill"></div></div>
+        </div>
+        <div id="share-on" hidden>
+          <p class="hint">Give Claude this session code:</p>
+          <div class="copyrow"><code id="share-code"></code><button type="button" class="btn" id="copy-code">Copy</button></div>
+          <p class="hint">Add the tools to Claude Code once:</p>
+          <div class="copyrow"><code id="share-mcp"></code><button type="button" class="btn" id="copy-mcp">Copy</button></div>
+          <p class="hint" id="share-status" aria-live="polite"></p>
+          <button type="button" class="btn" id="share-end">End session and delete scan</button>
+        </div>
       </section>
 
       <section>

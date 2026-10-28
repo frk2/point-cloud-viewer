@@ -1,8 +1,11 @@
 id: point-cloud-viewer
 name: Point Cloud Viewer
 description: Open PLY point clouds in the browser and inspect them in 3D
-type: static
-directory: public
+type: service
+command: node server.mjs
+port: 4351
 project: tools
+data:
+  - point-cloud-viewer-data
 route: /point-cloud-viewer
 visibility: private

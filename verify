@@ -1,10 +1,10 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")"
-for f in public/ply.js public/units.js public/worker.js public/camera.js public/renderer.js public/app.js test.mjs; do
+for f in server.mjs lib/*.mjs public/*.js test.mjs test-server.mjs; do
   node --check "$f"
 done
 for f in public/index.html public/style.css public/icon.svg public/samples/roi-world.ply; do
   test -s "$f" || { echo "missing $f" >&2; exit 1; }
 done
-node --test test.mjs
+node --no-warnings --test test.mjs test-server.mjs

@@ -1,6 +1,7 @@
 import { OrbitCamera, axisFrame, viewOrientation, slerp, mat4Mul, add, scale, dot } from './camera.js';
 import { Renderer } from './renderer.js';
 import { UNITS, guessUnits, niceLength, formatLength } from './units.js';
+import { initShare } from './share.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view');
@@ -49,7 +50,9 @@ function openFile(file) {
       worker = null;
       showProgress('Sending points to the graphics card', 1);
       // Let the progress text paint before the upload blocks the thread.
-      requestAnimationFrame(() => setTimeout(() => setCloud(data.cloud, name, size)));
+      requestAnimationFrame(() => setTimeout(() => {
+        if (setCloud(data.cloud, { name, size, file })) share.localLoaded();
+      }));
     } else {
       worker.terminate();
       worker = null;
@@ -64,36 +67,57 @@ function openFile(file) {
   worker.postMessage({ file });
 }
 
-function setCloud(c, name, size) {
-  if (!renderer) return;
+const UNIT_HINTS = {
+  comment: 'Read from a comment in the file.',
+  size: 'PLY files don\'t record units; this is a guess from the cloud\'s size. Change it if it\'s wrong.',
+  set: 'Set by you or Claude.',
+};
+
+// opts: name, size, file (the local file, kept for sharing), units and
+// unitsSource (from a shared session), keepView (an edit of the same scan).
+function setCloud(c, opts) {
+  if (!renderer) return false;
   renderer.upload(c);
   const err = renderer.gl.getError();
   if (err === renderer.gl.OUT_OF_MEMORY) {
     hideProgress();
     showError('The graphics card ran out of memory for this many points.');
-    return;
+    return false;
   }
-  cloud = { ...c, name, size };
-  $('filename').textContent = name;
-  document.title = `${name} · Point Cloud Viewer`;
+  const prev = cloud;
+  cloud = { ...c, name: opts.name, size: opts.size ?? null, file: opts.file ?? null };
+  $('filename').textContent = opts.name;
+  document.title = `${opts.name} · Point Cloud Viewer`;
   budget = Math.min(cloud.count, 6e6);
   hideProgress();
   $('empty').hidden = true;
   const rgb = $('color-mode').querySelector('option[value="rgb"]');
   rgb.disabled = !cloud.hasColor;
-  settings.mode = cloud.hasColor ? 'rgb' : 'height';
+  if (!opts.keepView) settings.mode = cloud.hasColor ? 'rgb' : 'height';
+  else if (settings.mode === 'rgb' && !cloud.hasColor) settings.mode = 'height';
   $('color-mode').value = settings.mode;
-  const extent = Math.max(...cloud.max.map((v, k) => v - cloud.min[k]));
-  const guess = guessUnits(cloud.comments, extent);
-  setUnits(guess.unit, guess.source === 'comment'
-    ? 'Read from a comment in the file.'
-    : 'PLY files don\'t record units; this is a guess from the cloud\'s size. Change it if it\'s wrong.');
+  if (opts.units) {
+    setUnits(opts.units, UNIT_HINTS[opts.unitsSource] || UNIT_HINTS.set, false);
+  } else {
+    const extent = Math.max(...cloud.max.map((v, k) => v - cloud.min[k]));
+    const guess = guessUnits(cloud.comments, extent);
+    setUnits(guess.unit, UNIT_HINTS[guess.source], false);
+  }
   updateRanges();
   if (cloud.truncated) {
     showError(`The file ended early: read ${fmtInt(cloud.count + cloud.skipped)} of ${fmtInt(cloud.declared)} declared points.`);
   }
-  resetView(false);
-  canvas.focus({ preventScroll: true });
+  if (opts.keepView && prev) {
+    // Positions are relative to the centroid, which moves when points change.
+    anim = null;
+    camera.target = add(camera.target, prev.centroid.map((v, k) => v - cloud.centroid[k]));
+    onCameraChange();
+    requestDraw();
+  } else {
+    resetView(false);
+    canvas.focus({ preventScroll: true });
+  }
+  return true;
 }
 
 // ---- View ------------------------------------------------------------------
@@ -131,11 +155,49 @@ function setView(name) {
 
 // Moves the origin to `p` (cloud coordinates) without turning the camera:
 // the view slides sideways so the new origin sits at the centre.
-function setOrigin(p) {
-  const eye = camera.eye();
-  const back = camera.axes().back;
+function setOrigin(p) { moveTo(originState(camera, p)); }
+
+function originState(cam, p) {
+  const eye = cam.eye();
+  const back = cam.axes().back;
   const depth = -dot(add(p, eye, -1), back);
-  moveTo({ ...camera.state, target: p, distance: depth > minDistance() ? depth : camera.distance });
+  return { ...cam.state, target: p, distance: depth > minDistance() ? depth : cam.distance };
+}
+
+// Applies a view change sent by Claude through a shared session.
+function applyView(v) {
+  if (v.upAxis && v.upAxis !== settings.up) {
+    settings.up = v.upAxis;
+    $('up-axis').value = v.upAxis;
+    camera.worldUp = frame().up;
+    updateRanges();
+  }
+  if (v.colorMode && !(v.colorMode === 'rgb' && !cloud?.hasColor)) {
+    settings.mode = v.colorMode;
+    $('color-mode').value = v.colorMode;
+  }
+  if (v.pointSize) {
+    settings.size = v.pointSize;
+    $('size').value = v.pointSize;
+    $('size-out').textContent = `${v.pointSize} px`;
+  }
+  if (cloud) {
+    const probe = new OrbitCamera();
+    probe.fovy = camera.fovy;
+    probe.worldUp = camera.worldUp;
+    probe.state = anim ? anim.to : camera.state;
+    if (v.reset) {
+      probe.q = viewOrientation('iso', frame());
+      probe.target = [0, 0, 0];
+      probe.distance = fitDistance(probe.q, probe.target);
+    }
+    if (v.view) probe.q = viewOrientation(v.view, frame());
+    if (v.origin) probe.state = originState(probe, v.origin.map((x, k) => x - cloud.centroid[k]));
+    if (v.fit) probe.distance = fitDistance(probe.q, probe.target);
+    if (v.zoom) probe.distance = Math.max(minDistance(), probe.distance / v.zoom);
+    moveTo(probe.state);
+  }
+  requestDraw();
 }
 
 let anim = null;
@@ -173,6 +235,7 @@ function onCameraChange() {
     const el = $(id);
     if (document.activeElement !== el) el.value = world[k].toFixed(dec);
   });
+  share.viewChanged();
 }
 
 // ---- Drawing ---------------------------------------------------------------
@@ -199,10 +262,15 @@ function interacted() {
 
 function draw(now) {
   pending = false;
+  paint(now, false);
+}
+
+// Renders one frame; `still` forces every point (for screenshots).
+function paint(now, still) {
   if (!renderer) return;
   renderer.resize();
   const animating = stepAnimation(now);
-  const moving = animating || now < interactingUntil;
+  const moving = !still && (animating || now < interactingUntil);
   const total = cloud ? cloud.count : 0;
 
   if (moving && lastWasMoving) {
@@ -234,7 +302,7 @@ function draw(now) {
     gizmo: cloud && settings.showOrigin ? gizmo() : null,
   });
   updateScaleBar();
-  if (moving) requestDraw();
+  if (moving || (still && animating)) requestDraw();
   if (!moving || now - hudAt > 250) {
     hudAt = now;
     renderHud(moving);
@@ -256,13 +324,19 @@ function gizmo() {
 
 // A bar of a round length, true at the depth of the camera origin.
 let scaleKey = '';
-function updateScaleBar() {
-  if (!cloud) { $('scalebar').hidden = true; return; }
+function scaleBar() {
   const filePerPx = (2 * camera.distance * Math.tan(camera.fovy / 2)) / Math.max(1, canvas.clientHeight);
   const perPx = filePerPx * shownScale();
   const len = niceLength(perPx * 120);
-  const width = Math.round(len / perPx);
-  const label = mmPerUnit() ? formatLength(len) : `${Number(len.toPrecision(12))} units`;
+  return {
+    width: Math.round(len / perPx),
+    label: mmPerUnit() ? formatLength(len) : `${Number(len.toPrecision(12))} units`,
+  };
+}
+
+function updateScaleBar() {
+  if (!cloud) { $('scalebar').hidden = true; return; }
+  const { width, label } = scaleBar();
   const key = `${label}|${width}`;
   if (key === scaleKey) return;
   scaleKey = key;
@@ -491,7 +565,7 @@ $('color-mode').addEventListener('change', (e) => { settings.mode = e.target.val
 $('round').addEventListener('change', (e) => { settings.round = e.target.checked; requestDraw(); });
 $('adaptive').addEventListener('change', (e) => { settings.adaptive = e.target.checked; requestDraw(); });
 $('show-origin').addEventListener('change', (e) => { settings.showOrigin = e.target.checked; requestDraw(); });
-$('units').addEventListener('change', (e) => setUnits(e.target.value, 'Set by you.'));
+$('units').addEventListener('change', (e) => setUnits(e.target.value, UNIT_HINTS.set));
 $('up-axis').addEventListener('change', (e) => {
   settings.up = e.target.value;
   updateRanges();
@@ -557,7 +631,9 @@ function mmPerUnit() { return UNITS[settings.units].mm; }
 function shownScale() { return mmPerUnit() ?? 1; }
 function shownUnit() { return mmPerUnit() ? 'mm' : 'file units'; }
 
-function setUnits(unit, hint) {
+// `report` tells a shared session about a change made here.
+function setUnits(unit, hint, report = true) {
+  if (report && unit !== settings.units) share.unitsChanged(unit);
   settings.units = unit;
   $('units').value = unit;
   $('units-hint').textContent = hint;
@@ -591,9 +667,11 @@ function renderFacts() {
   const rows = [
     ['Points', fmtInt(cloud.count)],
     ...(cloud.skipped ? [['Skipped (not finite)', fmtInt(cloud.skipped)]] : []),
-    ['File size', fmtBytes(cloud.size)],
-    ['Format', format],
-    ['Properties', cloud.properties.map((p) => `${p.name} (${p.type})`).join(', ')],
+    ...(cloud.size ? [['File size', fmtBytes(cloud.size)]] : []),
+    ...(format ? [['Format', format]] : [['Source', 'Shared session']]),
+    ['Properties', cloud.properties
+      ? cloud.properties.map((p) => `${p.name} (${p.type})`).join(', ')
+      : `x, y, z${cloud.hasColor ? ', colour' : ''}`],
     [`Size X × Y × Z (${u})`, cloud.max.map((v, k) => ((v - cloud.min[k]) * s).toFixed(dec)).join(' × ')],
     [`Centroid (${u})`, v3(cloud.centroid)],
     [`Min (${u})`, v3(cloud.min)],
@@ -637,6 +715,63 @@ canvas.addEventListener('webglcontextrestored', () => {
   hideError();
   renderer.restore(cloud);
   requestDraw();
+});
+
+// ---- Sharing with Claude ---------------------------------------------------
+
+// Renders a still frame and returns it, with the scale bar, as a JPEG.
+function snapshot() {
+  paint(performance.now(), true);
+  const k = Math.min(1, 1280 / canvas.width);
+  const out = document.createElement('canvas');
+  out.width = Math.round(canvas.width * k);
+  out.height = Math.round(canvas.height * k);
+  const g = out.getContext('2d');
+  g.drawImage(canvas, 0, 0, out.width, out.height);
+  if (cloud) {
+    const { width, label } = scaleBar();
+    const px = width * renderer.dpr * k;
+    const x1 = out.width - 20, x0 = x1 - px, y = out.height - 16;
+    const ink = `rgb(${solid.map((v) => Math.round(v * 255)).join(',')})`;
+    g.strokeStyle = ink;
+    g.fillStyle = ink;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(x0, y - 6); g.lineTo(x0, y); g.lineTo(x1, y); g.lineTo(x1, y - 6);
+    g.stroke();
+    g.font = '13px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.fillText(label, (x0 + x1) / 2, y - 10);
+  }
+  return new Promise((resolve) => out.toBlob(resolve, 'image/jpeg', 0.85));
+}
+
+function viewReport() {
+  if (!cloud) return null;
+  const { up, back } = camera.axes();
+  return {
+    origin: camera.target.map((v, k) => v + cloud.centroid[k]),
+    forward: back.map((v) => -v),
+    up,
+    distance: camera.distance,
+    visibleHeight: 2 * camera.distance * Math.tan(camera.fovy / 2),
+    pointSize: settings.size,
+    colorMode: settings.mode,
+    upAxis: settings.up,
+  };
+}
+
+const share = initShare({
+  cloud: () => cloud,
+  units: () => settings.units,
+  setCloud,
+  applyView,
+  snapshot,
+  viewReport,
+  setUnitsFromServer: (unit, source) => setUnits(unit, UNIT_HINTS[source] || UNIT_HINTS.set, false),
+  progress: showProgress,
+  hideProgress,
+  showError,
 });
 
 new ResizeObserver(() => requestDraw()).observe(canvas);
