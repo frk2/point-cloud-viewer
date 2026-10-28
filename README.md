@@ -35,8 +35,12 @@ a 32-character session code. Claude uses the MCP endpoint at `/mcp`
 (Streamable HTTP, no sign-in):
 
 ```sh
-claude mcp add --transport http point-cloud https://point-cloud-viewer.faraz.emptyos.com/mcp
+claude mcp add --transport http point-cloud https://point-cloud-viewer.faraz.emptyos.com/mcp \
+  --header "Origin: https://point-cloud-viewer.faraz.emptyos.com"
 ```
+
+The `Origin` header is required: the EmptyOS gateway refuses POSTs without
+it.
 
 Then tell Claude: "Use the point-cloud tools with session <code>." Claude can
 also start a session itself (`create_session`) and give the visitor a
@@ -70,7 +74,10 @@ screenshot requests by rendering a frame and posting a JPEG.
 
 ### HTTP API (used by the page; handy with curl)
 
-All `/api/session/*` requests take `Authorization: Bearer <code>`.
+All `/api/session/*` requests take an `X-Point-Cloud-Session: <code>` header
+(EmptyOS keeps `Authorization` for its own sign-in). EmptyOS also requires
+`Origin: https://point-cloud-viewer.faraz.emptyos.com` on every POST, PUT
+and DELETE; browsers send it, curl and MCP clients must add it.
 
 - `POST /api/sessions`: new session
 - `PUT /api/session/ply?offset=&total=&name=`: upload a PLY, whole or in

@@ -63,9 +63,12 @@ export function createApp({ dbPath, now, limits = LIMITS } = {}) {
     return `${local ? 'http' : 'https'}://${host}`;
   };
 
+  // EmptyOS keeps the Authorization header for itself, so the session code
+  // travels in its own header.
+  const codeOf = (req) => String(req.headers['x-point-cloud-session'] || '');
+
   function session(req) {
-    const m = /^Bearer ([0-9a-f]{32})$/.exec(req.headers.authorization || '');
-    const s = m && store.find(m[1]);
+    const s = store.find(codeOf(req));
     if (!s) throw new HttpError('Unknown or expired session.', 404);
     store.touch(s);
     return s;
@@ -228,7 +231,7 @@ export function createApp({ dbPath, now, limits = LIMITS } = {}) {
       service.seen(s);
       if (url.searchParams.get('wait')) {
         await service.waitForChange(s, since, limits.pollMs);
-        const again = store.find(req.headers.authorization.slice(7));
+        const again = store.find(codeOf(req));
         if (!again) throw new HttpError('This session has ended.', 404);
         json(res, service.state(again));
         return;

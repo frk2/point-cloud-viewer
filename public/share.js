@@ -16,7 +16,7 @@ export function initShare(app) {
   let reportTimer = 0;
   let last = null;
 
-  const api = (path, opts = {}) => fetch(path, { ...opts, headers: { Authorization: `Bearer ${token}`, ...opts.headers } });
+  const api = (path, opts = {}) => fetch(path, { ...opts, headers: { 'X-Point-Cloud-Session': token, ...opts.headers } });
 
   async function failure(res) {
     let message = `The server answered ${res.status}.`;
@@ -49,7 +49,7 @@ export function initShare(app) {
 
   function renderOn() {
     $('share-code').textContent = token;
-    $('share-mcp').textContent = `claude mcp add --transport http point-cloud ${location.origin}/mcp`;
+    $('share-mcp').textContent = `claude mcp add --transport http point-cloud ${location.origin}/mcp --header "Origin: ${location.origin}"`;
     const lines = [];
     if (last) {
       const by = new Date(last.ends_by).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
@@ -262,7 +262,7 @@ export function initShare(app) {
   $('share-end').addEventListener('click', async () => {
     const t = token;
     ended();
-    await fetch('/api/session', { method: 'DELETE', headers: { Authorization: `Bearer ${t}` } }).catch(() => {});
+    await fetch('/api/session', { method: 'DELETE', headers: { 'X-Point-Cloud-Session': t } }).catch(() => {});
   });
   $('copy-code').addEventListener('click', (e) => copy(`Use the point-cloud tools with session ${token}.`, e.currentTarget));
   $('copy-mcp').addEventListener('click', (e) => copy($('share-mcp').textContent, e.currentTarget));

@@ -43,7 +43,7 @@ async function tool(name, args = {}) {
   try { return JSON.parse(text); } catch { return { text, result }; }
 }
 
-const auth = (token) => ({ Authorization: `Bearer ${token}` });
+const auth = (token) => ({ 'X-Point-Cloud-Session': token });
 
 function ply(points) {
   const head = `ply\nformat binary_little_endian 1.0\ncomment units mm\nelement vertex ${points.length}\nproperty float x\nproperty float y\nproperty float z\nend_header\n`;
@@ -72,7 +72,7 @@ test('MCP handshake lists the tools', async () => {
 test('session endpoints refuse unknown or malformed codes', async () => {
   assert.equal((await fetch(`${base}/api/session/state`)).status, 404);
   assert.equal((await fetch(`${base}/api/session/state`, { headers: auth('0'.repeat(32)) })).status, 404);
-  assert.equal((await fetch(`${base}/api/session/export.ply`, { headers: { Authorization: 'Bearer x' } })).status, 404);
+  assert.equal((await fetch(`${base}/api/session/export.ply`, { headers: auth('x') })).status, 404);
   assert.match((await tool('get_info', { session: 'f'.repeat(32) })).error, /Unknown or expired/);
   assert.match((await tool('get_info', { session: '../etc' })).error, /Unknown or expired/);
 });
