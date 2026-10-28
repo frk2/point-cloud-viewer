@@ -1,5 +1,6 @@
 import { OrbitCamera, axisFrame, viewOrientation, slerp, mat4Mul, add, scale, dot } from './camera.js';
 import { Renderer } from './renderer.js';
+import { UNITS, guessUnits, niceLength, formatLength } from './units.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view');
@@ -13,6 +14,7 @@ const settings = {
   adaptive: true,
   showOrigin: true,
   up: '+z',
+  units: 'm',
 };
 
 let renderer;
@@ -81,8 +83,12 @@ function setCloud(c, name, size) {
   rgb.disabled = !cloud.hasColor;
   settings.mode = cloud.hasColor ? 'rgb' : 'height';
   $('color-mode').value = settings.mode;
+  const extent = Math.max(...cloud.max.map((v, k) => v - cloud.min[k]));
+  const guess = guessUnits(cloud.comments, extent);
+  setUnits(guess.unit, guess.source === 'comment'
+    ? 'Read from a comment in the file.'
+    : 'PLY files don\'t record units; this is a guess from the cloud\'s size. Change it if it\'s wrong.');
   updateRanges();
-  renderFacts();
   if (cloud.truncated) {
     showError(`The file ended early: read ${fmtInt(cloud.count + cloud.skipped)} of ${fmtInt(cloud.declared)} declared points.`);
   }
@@ -162,7 +168,7 @@ function stepAnimation(now) {
 function onCameraChange() {
   if (!cloud) return;
   const dec = decimals();
-  const world = camera.target.map((v, k) => v + cloud.centroid[k]);
+  const world = camera.target.map((v, k) => (v + cloud.centroid[k]) * shownScale());
   ['ox', 'oy', 'oz'].forEach((id, k) => {
     const el = $(id);
     if (document.activeElement !== el) el.value = world[k].toFixed(dec);
@@ -227,6 +233,7 @@ function draw(now) {
     background,
     gizmo: cloud && settings.showOrigin ? gizmo() : null,
   });
+  updateScaleBar();
   if (moving) requestDraw();
   if (!moving || now - hudAt > 250) {
     hudAt = now;
@@ -245,6 +252,23 @@ function gizmo() {
     v.push(...t, ...colors[i], ...add(t, a, L), ...colors[i]);
   });
   return new Float32Array(v);
+}
+
+// A bar of a round length, true at the depth of the camera origin.
+let scaleKey = '';
+function updateScaleBar() {
+  if (!cloud) { $('scalebar').hidden = true; return; }
+  const filePerPx = (2 * camera.distance * Math.tan(camera.fovy / 2)) / Math.max(1, canvas.clientHeight);
+  const perPx = filePerPx * shownScale();
+  const len = niceLength(perPx * 120);
+  const width = Math.round(len / perPx);
+  const label = mmPerUnit() ? formatLength(len) : `${Number(len.toPrecision(12))} units`;
+  const key = `${label}|${width}`;
+  if (key === scaleKey) return;
+  scaleKey = key;
+  $('scalebar').hidden = false;
+  $('scalebar-label').textContent = label;
+  $('scalebar-bar').style.width = `${width}px`;
 }
 
 function renderHud(moving) {
@@ -467,6 +491,7 @@ $('color-mode').addEventListener('change', (e) => { settings.mode = e.target.val
 $('round').addEventListener('change', (e) => { settings.round = e.target.checked; requestDraw(); });
 $('adaptive').addEventListener('change', (e) => { settings.adaptive = e.target.checked; requestDraw(); });
 $('show-origin').addEventListener('change', (e) => { settings.showOrigin = e.target.checked; requestDraw(); });
+$('units').addEventListener('change', (e) => setUnits(e.target.value, 'Set by you.'));
 $('up-axis').addEventListener('change', (e) => {
   settings.up = e.target.value;
   updateRanges();
@@ -483,7 +508,7 @@ $('origin-form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (!cloud) return;
   const ids = ['ox', 'oy', 'oz'];
-  const vals = ids.map((id) => Number($(id).value.trim().replace(',', '.')));
+  const vals = ids.map((id) => Number($(id).value.trim().replace(',', '.')) / shownScale());
   for (let k = 0; k < 3; k++) {
     const el = $(ids[k]);
     el.setCustomValidity(Number.isFinite(vals[k]) && $(ids[k]).value.trim() !== '' ? '' : 'Enter a number');
@@ -527,8 +552,24 @@ window.addEventListener('drop', (e) => {
 
 // ---- Text ------------------------------------------------------------------
 
+// Lengths are shown in millimetres when the file's unit is known.
+function mmPerUnit() { return UNITS[settings.units].mm; }
+function shownScale() { return mmPerUnit() ?? 1; }
+function shownUnit() { return mmPerUnit() ? 'mm' : 'file units'; }
+
+function setUnits(unit, hint) {
+  settings.units = unit;
+  $('units').value = unit;
+  $('units-hint').textContent = hint;
+  $('origin-unit').textContent = shownUnit();
+  if (!cloud) return;
+  renderFacts();
+  onCameraChange();
+  requestDraw();
+}
+
 function decimals() {
-  const ext = Math.max(...cloud.max.map((v, k) => v - cloud.min[k]), 1e-12);
+  const ext = Math.max(...cloud.max.map((v, k) => (v - cloud.min[k]) * shownScale()), 1e-12);
   return Math.min(10, Math.max(0, Math.ceil(-Math.log10(ext)) + 4));
 }
 
@@ -543,7 +584,9 @@ function fmtBytes(b) {
 
 function renderFacts() {
   const dec = decimals();
-  const v3 = (v) => v.map((x) => x.toFixed(dec)).join(', ');
+  const s = shownScale();
+  const u = shownUnit();
+  const v3 = (v) => v.map((x) => (x * s).toFixed(dec)).join(', ');
   const format = { ascii: 'ASCII', binary_little_endian: 'Binary, little-endian', binary_big_endian: 'Binary, big-endian' }[cloud.format];
   const rows = [
     ['Points', fmtInt(cloud.count)],
@@ -551,10 +594,10 @@ function renderFacts() {
     ['File size', fmtBytes(cloud.size)],
     ['Format', format],
     ['Properties', cloud.properties.map((p) => `${p.name} (${p.type})`).join(', ')],
-    ['Size X × Y × Z', cloud.max.map((v, k) => (v - cloud.min[k]).toFixed(dec)).join(' × ')],
-    ['Centroid', v3(cloud.centroid)],
-    ['Min', v3(cloud.min)],
-    ['Max', v3(cloud.max)],
+    [`Size X × Y × Z (${u})`, cloud.max.map((v, k) => ((v - cloud.min[k]) * s).toFixed(dec)).join(' × ')],
+    [`Centroid (${u})`, v3(cloud.centroid)],
+    [`Min (${u})`, v3(cloud.min)],
+    [`Max (${u})`, v3(cloud.max)],
   ];
   const dl = $('facts');
   dl.replaceChildren(...rows.map(([k, v]) => {

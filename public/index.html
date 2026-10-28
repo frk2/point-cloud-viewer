@@ -42,10 +42,26 @@
 
     <p class="error" id="error" role="alert" hidden></p>
     <p class="hud" id="hud" aria-live="polite"></p>
+    <div class="scalebar" id="scalebar" title="Length at the depth of the camera origin" hidden>
+      <span class="scalebar-label" id="scalebar-label"></span>
+      <span class="scalebar-bar" id="scalebar-bar"></span>
+    </div>
 
     <aside class="panel" id="panel" aria-label="Controls">
       <section>
         <h2>Cloud</h2>
+        <label class="field" for="units">
+          <span>File units</span>
+          <select id="units">
+            <option value="m">Metres</option>
+            <option value="cm">Centimetres</option>
+            <option value="mm">Millimetres</option>
+            <option value="in">Inches</option>
+            <option value="ft">Feet</option>
+            <option value="none">Unknown (no scale)</option>
+          </select>
+        </label>
+        <p class="hint" id="units-hint">PLY files don't record units.</p>
         <dl class="facts" id="facts"><div><dt>Points</dt><dd>—</dd></div></dl>
       </section>
 
@@ -98,7 +114,7 @@
 
       <section>
         <h2>Camera origin</h2>
-        <p class="hint">The view turns around this point. Double-click a point in the cloud to move it there.</p>
+        <p class="hint">The view turns around this point. Double-click a point in the cloud to move it there. Coordinates in <span id="origin-unit">file units</span>.</p>
         <form id="origin-form" class="xyz">
           <label>X <input type="text" inputmode="decimal" id="ox" autocomplete="off" spellcheck="false"></label>
           <label>Y <input type="text" inputmode="decimal" id="oy" autocomplete="off" spellcheck="false"></label>
