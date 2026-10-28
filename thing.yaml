@@ -1,0 +1,8 @@
+id: point-cloud-viewer
+name: Point Cloud Viewer
+description: Open PLY point clouds in the browser and inspect them in 3D
+type: static
+directory: public
+project: tools
+route: /point-cloud-viewer
+visibility: private

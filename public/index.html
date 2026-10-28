@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Point Cloud Viewer</title>
+  <meta name="description" content="Open a PLY point cloud in your browser and inspect it in 3D.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1>Point Cloud Viewer</h1>
+    <button type="button" class="btn primary" id="open-btn">Open PLY</button>
+    <input type="file" id="file-input" accept=".ply" hidden>
+    <span class="filename" id="filename"></span>
+    <button type="button" class="btn panel-toggle" id="panel-toggle" aria-controls="panel" aria-expanded="false">Controls</button>
+    <emptyos-badge></emptyos-badge>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="view" tabindex="0" aria-label="Point cloud view. Drag to rotate and tilt, right-drag or shift-drag to pan, scroll to zoom, double-click a point to make it the camera origin. Arrow keys rotate and tilt, shift and arrow keys pan, plus and minus zoom."></canvas>
+
+    <section class="empty" id="empty" aria-labelledby="empty-title">
+      <div class="drop">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0-12-4 4m4-4 4 4M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg>
+        <h2 id="empty-title">Drop a .ply file here</h2>
+        <p>ASCII or binary PLY, with or without colour. Millions of points are fine.</p>
+        <div class="drop-actions">
+          <button type="button" class="btn primary" id="open-btn-2">Choose a file</button>
+          <button type="button" class="btn" id="sample-btn">Load sample scan</button>
+        </div>
+        <p class="fine">The file is read by your browser and never leaves this device.</p>
+      </div>
+    </section>
+
+    <div class="progress" id="progress" hidden>
+      <p id="progress-label">Reading points</p>
+      <div class="track"><div class="fill" id="progress-fill"></div></div>
+    </div>
+
+    <p class="error" id="error" role="alert" hidden></p>
+    <p class="hud" id="hud" aria-live="polite"></p>
+
+    <aside class="panel" id="panel" aria-label="Controls">
+      <section>
+        <h2>Cloud</h2>
+        <dl class="facts" id="facts"><div><dt>Points</dt><dd>—</dd></div></dl>
+      </section>
+
+      <section>
+        <h2>Display</h2>
+        <label class="field" for="size">
+          <span>Point size <output id="size-out" for="size">2 px</output></span>
+          <input type="range" id="size" min="1" max="16" step="0.5" value="2">
+        </label>
+        <label class="field" for="color-mode">
+          <span>Colour</span>
+          <select id="color-mode">
+            <option value="rgb">File colours</option>
+            <option value="height">Height</option>
+            <option value="x">X</option>
+            <option value="y">Y</option>
+            <option value="z">Z</option>
+            <option value="solid">Single colour</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="round"> Round points</label>
+        <label class="check"><input type="checkbox" id="adaptive" checked> Thin out while moving if slow</label>
+        <label class="check"><input type="checkbox" id="show-origin" checked> Show origin marker</label>
+      </section>
+
+      <section>
+        <h2>Camera</h2>
+        <label class="field" for="up-axis">
+          <span>Up axis</span>
+          <select id="up-axis">
+            <option value="+z">+Z</option>
+            <option value="-z">−Z</option>
+            <option value="+y">+Y</option>
+            <option value="-y">−Y</option>
+            <option value="+x">+X</option>
+            <option value="-x">−X</option>
+          </select>
+        </label>
+        <div class="buttons four" role="group" aria-label="View direction">
+          <button type="button" class="btn" data-view="iso">Iso</button>
+          <button type="button" class="btn" data-view="top">Top</button>
+          <button type="button" class="btn" data-view="front">Front</button>
+          <button type="button" class="btn" data-view="side">Side</button>
+        </div>
+        <div class="buttons two">
+          <button type="button" class="btn" id="fit">Fit to window</button>
+          <button type="button" class="btn" id="reset">Reset view</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Camera origin</h2>
+        <p class="hint">The view turns around this point. Double-click a point in the cloud to move it there.</p>
+        <form id="origin-form" class="xyz">
+          <label>X <input type="text" inputmode="decimal" id="ox" autocomplete="off" spellcheck="false"></label>
+          <label>Y <input type="text" inputmode="decimal" id="oy" autocomplete="off" spellcheck="false"></label>
+          <label>Z <input type="text" inputmode="decimal" id="oz" autocomplete="off" spellcheck="false"></label>
+          <button type="submit" class="btn">Set origin</button>
+        </form>
+        <div class="buttons two">
+          <button type="button" class="btn" id="origin-centroid">Centroid</button>
+          <button type="button" class="btn" id="origin-box">Box centre</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Controls</h2>
+        <dl class="keys">
+          <div><dt>Drag</dt><dd>Rotate and tilt</dd></div>
+          <div><dt>Right-drag, Shift-drag</dt><dd>Pan</dd></div>
+          <div><dt>Scroll, pinch</dt><dd>Zoom</dd></div>
+          <div><dt>Double-click</dt><dd>Set origin</dd></div>
+          <div><dt>Arrows</dt><dd>Rotate and tilt</dd></div>
+          <div><dt>Shift + arrows</dt><dd>Pan</dd></div>
+          <div><dt>+ / −</dt><dd>Zoom</dd></div>
+          <div><dt>F / R</dt><dd>Fit / reset</dd></div>
+        </dl>
+      </section>
+    </aside>
+  </main>
+  <script src="/_system/app/badge.js" defer></script>
+</body>
+</html>
