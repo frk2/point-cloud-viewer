@@ -86,6 +86,10 @@ function setCloud(c, opts) {
   }
   const prev = cloud;
   cloud = { ...c, name: opts.name, size: opts.size ?? null, file: opts.file ?? null };
+  if (opts.keepView && prev) {
+    // An edit of the same scan: keep what the original file told us.
+    for (const k of ['format', 'properties', 'comments', 'size', 'file']) cloud[k] = cloud[k] ?? prev[k];
+  }
   $('filename').textContent = opts.name;
   document.title = `${opts.name} · Point Cloud Viewer`;
   budget = Math.min(cloud.count, 6e6);
