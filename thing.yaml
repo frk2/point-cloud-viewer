@@ -5,4 +5,4 @@ type: static
 directory: public
 project: tools
 route: /point-cloud-viewer
-visibility: public
+visibility: private
