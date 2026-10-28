@@ -8,4 +8,4 @@ project: tools
 data:
   - point-cloud-viewer-data
 route: /point-cloud-viewer
-visibility: private
+visibility: public
