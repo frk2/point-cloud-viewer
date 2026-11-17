@@ -4,7 +4,7 @@ A public EmptyOS service for opening `.ply` point clouds in the browser,
 inspecting them in 3D at real-world scale, and letting Claude work on them
 through MCP.
 
-Live at https://point-cloud-viewer.faraz.emptyos.com/ (source:
+Live at https://point-cloud-viewer.faraz.emptyos.app/ (source:
 https://github.com/frk2/point-cloud-viewer).
 
 ## Viewing (all in the browser)
@@ -35,8 +35,8 @@ a 32-character session code. Claude uses the MCP endpoint at `/mcp`
 (Streamable HTTP, no sign-in):
 
 ```sh
-claude mcp add --transport http point-cloud https://point-cloud-viewer.faraz.emptyos.com/mcp \
-  --header "Origin: https://point-cloud-viewer.faraz.emptyos.com"
+claude mcp add --transport http point-cloud https://point-cloud-viewer.faraz.emptyos.app/mcp \
+  --header "Origin: https://point-cloud-viewer.faraz.emptyos.app"
 ```
 
 The `Origin` header is required: the EmptyOS gateway refuses POSTs without
@@ -76,7 +76,7 @@ screenshot requests by rendering a frame and posting a JPEG.
 
 All `/api/session/*` requests take an `X-Point-Cloud-Session: <code>` header
 (EmptyOS keeps `Authorization` for its own sign-in). EmptyOS also requires
-`Origin: https://point-cloud-viewer.faraz.emptyos.com` on every POST, PUT
+`Origin: https://point-cloud-viewer.faraz.emptyos.app` on every POST, PUT
 and DELETE; browsers send it, curl and MCP clients must add it.
 
 - `POST /api/sessions`: new session
