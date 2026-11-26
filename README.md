@@ -97,13 +97,17 @@ and DELETE; browsers send it, curl and MCP clients must add it.
 - `public/`: the viewer (`ply.js` and `units.js` are shared with the server)
 - `test.mjs`, `test-server.mjs`: offline checks run by `./verify`
 
-## Change and publish
+## Change and deploy
 
-This folder is a bound `empty clone`, with GitHub as the `github` remote.
+Change it through a pull request on GitHub (`frk2/point-cloud-viewer`). A
+merge into `main` deploys it to the EmptyOS Thing `point-cloud-viewer`
+automatically. After Toastty merges a pull request, its `merge-and-deploy`
+skill runs `~/.toastty/skills/emptyos-deploy/scripts/emptyos-deploy`, which
+publishes main as one commit, keeps the Thing's live visibility, and posts
+the result as the `emptyos/deploy` status on the merged commit, so a failed
+deploy shows as a red mark on main.
 
-```sh
-./verify
-git commit -am "..."
-empty put . --json
-git push github main
-```
+Do not publish with `empty put` by hand: the next deploy stops when the live
+Thing holds content that is not on main. To deploy main by hand, run
+`~/.toastty/skills/emptyos-deploy/scripts/emptyos-deploy --github frk2/point-cloud-viewer`
+(add `--check` to see what it would do). Run `./verify` before you push.
